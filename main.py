@@ -2,7 +2,9 @@ import os
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
-from m import scan_qr
+import cv2
+from pyzbar.pyzbar import decode
+
 
 # ✅ フォントのパスを修正（IPAex明朝を使用）
 FONT_PATH = "/Users/chino/Library/Fonts/ipaexm.ttf"
@@ -14,10 +16,21 @@ pdfmetrics.registerFont(TTFont("IPAexMincho", FONT_PATH))
 OUTPUT_DIR = "OUTPUT"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# ✅ すでに処理済みのQRコードを記録するセット
+scanned_qr_codes = set()
 
-def generatePDF(affiliation, grade, name, filename="business_card.pdf"):
+
+def get_next_filename():
+    """OUTPUTフォルダ内のファイル数をチェックし、連番ファイル名を作成"""
+    files = [f for f in os.listdir(OUTPUT_DIR) if f.startswith("business_card_") and f.endswith(".pdf")]
+    numbers = [int(f.split("_")[-1].split(".")[0]) for f in files if f.split("_")[-1].split(".")[0].isdigit()]
+    next_number = max(numbers) + 1 if numbers else 1
+    return f"business_card_{next_number:03}.pdf"
+
+
+def generatePDF(affiliation, grade, name):
     """QRコードの情報から名刺PDFを作成"""
-    # ✅ 出力ファイルのパスを設定
+    filename = get_next_filename()
     output_path = os.path.join(OUTPUT_DIR, filename)
 
     # ✅ PDFのページサイズを設定（名刺サイズ: 91mm × 55mm = 258 × 156 pt）
@@ -40,45 +53,66 @@ def generatePDF(affiliation, grade, name, filename="business_card.pdf"):
     print(f"✅ PDF を保存しました: {output_path}")
 
 
-def scanQR():
-    """QRコードの情報を手動で入力して解析"""
-    print("📸 お手持ちのQRコードをリーダーにかざして下さい。")
-    raw_input = input("QRコードの内容を入力してください: ")  # 例: 理工学部/学部3年/山田 太郎
+def scan_qr():
+    cap = cv2.VideoCapture(0)  # カメラを起動
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            continue
+        
+        decoded_objects = decode(frame)
+        for obj in decoded_objects:
+            try:
+                qr_text = obj.data.decode("utf-8")  # ✅ UTF-8でデコード
+                print(f"📥 読み取ったQRコードの内容: {qr_text}")
+                cap.release()
+                cv2.destroyAllWindows()
+                return qr_text
+            except UnicodeDecodeError:
+                print("❌ デコードに失敗しました！エンコード方式を確認してください。")
 
-    # ✅ 期待する形式: 「学部/学年/名前」
-    informations = raw_input.split("/")
+        cv2.imshow("QR Code Scanner", frame)
+        if cv2.waitKey(1) & 0xFF == ord("q"):  # "q"キーで終了
+            break
 
-    # ✅ エラーチェック（最低3つのデータがあるか）
-    if len(informations) < 3:
-        print("❌ QRコードの情報が不足しています！ 正しいフォーマットで入力してください。")
-        return None, None, None
+    cap.release()
+    cv2.destroyAllWindows()
+    return None
 
-    # ✅ 各情報を取得（strip() で前後の空白を削除）
-    affiliation = informations[0].strip()
-    grade = informations[1].strip()
-    name = informations[2].strip()
 
-    print(f"📥 読み取った情報：学部={affiliation}, 学年={grade}, 名前={name}")
-    return affiliation, grade, name
+def play_success_sound():
+    os.system("afplay /System/Library/Sounds/Ping.aiff")
 
+def play_error_sound():
+    os.system("afplay /System/Library/Sounds/Basso.aiff")
 
 def main():
     """QRコードをスキャンし、PDFを生成するメイン関数"""
     read = scan_qr()
-    reads = read.split("/")
-    affiliation = reads[0]
-    grade = reads[1]
-    name = reads[2]
-    # affiliation, grade, name = scan_qr()
 
-    if not affiliation or not grade or not name:
-        print("❌ PDFの生成を中止しました（入力データが不完全）。")
+    # ✅ すでに読み取ったQRコードの場合はスキップ
+    if read in scanned_qr_codes:
+        print("⚠️ このQRコードはすでに処理済みです。スキャンをスキップします。")
+        play_error_sound()
         return
 
+    reads = read.split("/")
+    if len(reads) < 3:
+        print("❌ PDFの生成を中止しました（入力データが不完全）。")
+        play_error_sound()
+        return
+    
+    affiliation, grade, name = reads[0].strip(), reads[1].strip(), reads[2].strip()
+
+    # ✅ PDF を生成
     generatePDF(affiliation, grade, name)
 
+    # ✅ 読み取ったQRコードを記録
+    scanned_qr_codes.add(read)
+    play_success_sound()
 
-# ✅ スクリプトとして実行する場合、main() を呼び出す
+
+# ✅ スクリプトとして実行する場合
 if __name__ == "__main__":
-	while True:
-		main()
+    while True:
+        main()
