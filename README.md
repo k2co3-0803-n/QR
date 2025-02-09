@@ -1,2 +1,2 @@
 # QR code reader
-💻 Currently developing
+💻 Currently developing...
