@@ -1,1 +1,2 @@
-# qr
+# QR code reader
+💻 Currently developing
