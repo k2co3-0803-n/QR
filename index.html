@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QRコード名刺作成</title>
+</head>
+<body>
+    <h1>QRコードをスキャンして名刺PDFを作成</h1>
+    <video id="video" width="400" height="300" autoplay></video>
+    <canvas id="canvas" style="display: none;"></canvas>
+    <button onclick="startScanning()">QRコードをスキャン</button>
+    
+    <script type="module">
+        import { PDFDocument, rgb, StandardFonts } from "https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js";
+        import jsQR from "https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js";
+
+        const scannedQrCodes = new Set();
+
+        async function generatePDF(affiliation, grade, name) {
+            const pdfDoc = await PDFDocument.create();
+            const page = pdfDoc.addPage([258, 156]); // 名刺サイズ
+            const { width, height } = page.getSize();
+            const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+            
+            page.drawText(affiliation, { x: width / 2 - 30, y: height - 30, size: 14, font, color: rgb(0, 0, 0) });
+            page.drawText(grade, { x: width / 2 - 30, y: height - 60, size: 12, font, color: rgb(0, 0, 0) });
+            page.drawText(name, { x: width / 2 - 30, y: height - 90, size: 16, font, color: rgb(0, 0, 0) });
+
+            const pdfBytes = await pdfDoc.save();
+            const blob = new Blob([pdfBytes], { type: "application/pdf" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = getNextFilename();
+            link.click();
+            console.log(`✅ PDFを保存しました: ${link.download}`);
+        }
+
+        function getNextFilename() {
+            return `business_card_${new Date().getTime()}.pdf`;
+        }
+
+        function playSuccessSound() {
+            new Audio("https://www.myinstants.com/media/sounds/tone.mp3").play();
+        }
+
+        function playErrorSound() {
+            new Audio("https://www.myinstants.com/media/sounds/error.mp3").play();
+        }
+
+        function startScanning() {
+            const video = document.getElementById("video");
+            const canvas = document.getElementById("canvas");
+            const ctx = canvas.getContext("2d");
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.play();
+                    scanFrame();
+                })
+                .catch(error => console.error("カメラの起動に失敗しました:", error));
+
+            function scanFrame() {
+                if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
+
+                    if (qrCode) {
+                        console.log(`📥 読み取ったQRコードの内容: ${qrCode.data}`);
+                        processQRCode(qrCode.data);
+                        video.srcObject.getTracks().forEach(track => track.stop()); // カメラ停止
+                    } else {
+                        requestAnimationFrame(scanFrame);
+                    }
+                } else {
+                    requestAnimationFrame(scanFrame);
+                }
+            }
+        }
+
+        function processQRCode(qrText) {
+            if (scannedQrCodes.has(qrText)) {
+                console.warn("⚠️ このQRコードはすでに処理済みです。");
+                playErrorSound();
+                return;
+            }
+
+            const parts = qrText.split("/");
+            if (parts.length < 3) {
+                console.error("❌ PDFの生成を中止しました（入力データが不完全）。");
+                playErrorSound();
+                return;
+            }
+
+            const [affiliation, grade, name] = parts.map(p => p.trim());
+            generatePDF(affiliation, grade, name);
+            scannedQrCodes.add(qrText);
+            playSuccessSound();
+        }
+    </script>
+</body>
+</html>
+
