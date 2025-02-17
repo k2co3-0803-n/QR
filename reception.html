@@ -22,36 +22,49 @@
     <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
     <script>
         // GASのデプロイURLを格納する変数
-        const GAS_URL = "YOUR_GAS_DEPLOYED_URL";  // GASのURLをここに設定
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbz476ihsPneRyBGrLRwwNV8TveuTHYHxfNw8JFFj0P8HiaTzt2pKWFVbIUhkZWc6x4qOw/exec";
 
+        // QRコードスキャンを開始する処理を実行
         window.startScanning = function() {
+            // カメラ映像を表示するための<video>要素を取得
             const video = document.getElementById("video");
+            // 一時的にカメラ映像をキャプチャするための<canvas>要素を取得
             const canvas = document.getElementById("canvas");
+            // canvasの2D描画コンテキストを取得し，画像データを取得・加工するために使用
             const ctx = canvas.getContext("2d");
 
+            // カメラへのアクセスをリクエストするAPI
+            // facingMode: "environment"は，スマートフォンの場合に外側のカメラを使用するための指定
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                // then: 成功した場合
                 .then(stream => {
-                    video.srcObject = stream;
-                    video.play();
-                    scanFrame();
+                    video.srcObject = stream; // stream（ビデオ映像）を<video>に表示
+                    video.play(); // 映像の再生
+                    scanFrame(); // QRコードをスキャンする関数（次で定義）
                 })
+                // catch: 失敗した場合
                 .catch(error => console.error("カメラの起動に失敗しました:", error));
 
+            // scanFrame()は，<video>の1フレームをcanvasに描画してQRコードを解析する関数
             function scanFrame() {
+                // 要素に十分なデータが読み込まれた場合
                 if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
+                    canvas.width = video.videoWidth; // canvasの幅
+                    canvas.height = video.videoHeight; // canvasの高さ
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height); // videoの現在のフレームをcanvasに描画
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height); // canvas上の画像データを取得
+                    const qrCode = jsQR(imageData.data, imageData.width, imageData.height); // jsQRライブラリを使用して画像データからQRコードを解析
 
+                    // QRコードの読み取りに成功
                     if (qrCode) {
                         console.log(`📥 読み取ったQRコードの内容: ${qrCode.data}`);
-                        processQRCode(qrCode.data);
+                        processQRCode(qrCode.data); // 未定義
                         video.srcObject.getTracks().forEach(track => track.stop()); // カメラ停止
+                    // QRコードの読み取りに失敗
                     } else {
                         requestAnimationFrame(scanFrame);
                     }
+                // 要素に十分なデータが読み込まれなかった場合
                 } else {
                     requestAnimationFrame(scanFrame);
                 }
