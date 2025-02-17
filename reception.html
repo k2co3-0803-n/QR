@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <!-- 画面幅の自動調整 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIC 受付システム</title>
+</head>
+<body>
+    <h1>AIC 受付システム</h1>
+    <!-- ビデオの表示サイズ -->
+    <video id="video" width="800" height="500" autoplay></video>
+    <!-- display: none; 画面には表示せず，内部的に画像処理を行うために使用 -->
+    <canvas id="canvas" style="display: none;"></canvas>
+    <!-- QRコードのスキャンを開始するボタン -->
+    <button onclick="startScanning()">QRコードをスキャン</button>
+    <!-- JavaScriptで取得したQRコードの情報をここに表示する -->
+    <p id="result">スキャン結果がここに表示される．</p>
+
+    <!-- 外部ライブラリをCDN（Content Delivery Network）から読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+    <script>
+        // GASのデプロイURLを格納する変数
+        const GAS_URL = "YOUR_GAS_DEPLOYED_URL";  // GASのURLをここに設定
+
+        window.startScanning = function() {
+            const video = document.getElementById("video");
+            const canvas = document.getElementById("canvas");
+            const ctx = canvas.getContext("2d");
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.play();
+                    scanFrame();
+                })
+                .catch(error => console.error("カメラの起動に失敗しました:", error));
+
+            function scanFrame() {
+                if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
+
+                    if (qrCode) {
+                        console.log(`📥 読み取ったQRコードの内容: ${qrCode.data}`);
+                        processQRCode(qrCode.data);
+                        video.srcObject.getTracks().forEach(track => track.stop()); // カメラ停止
+                    } else {
+                        requestAnimationFrame(scanFrame);
+                    }
+                } else {
+                    requestAnimationFrame(scanFrame);
+                }
+            }
+        };
+
+        async function generatePDF(affiliation, grade, name) {
+            const pdfDoc = await window.pdfLib.PDFDocument.create();
+            const page = pdfDoc.addPage([258, 156]);
+            const { width, height } = page.getSize();
+            const font = await pdfDoc.embedFont(window.pdfLib.StandardFonts.Helvetica);
+
+            page.drawText(affiliation, { x: 30, y: height - 30, size: 14, font });
+            page.drawText(grade, { x: 30, y: height - 60, size: 12, font });
+            page.drawText(name, { x: 30, y: height - 90, size: 16, font });
+
+            return pdfDoc.save();
+        }
+
+        function getNextFilename() {
+            return `business_card_${new Date().getTime()}.pdf`;
+        }
+
+        function saveToSpreadsheet(affiliation, grade, name) {
+            fetch(GAS_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ affiliation, grade, name }),
+            })
+            .then(response => response.text())
+            .then(data => console.log("📊 スプレッドシート保存結果:", data))
+            .catch(error => console.error("❌ スプレッドシート保存エラー:", error));
+        }
+    </script>
+</body>
+</html>
+
