@@ -9,7 +9,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # 認証情報の設定
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name('./KEY/gspread-for-python-420303-e7ddbb5d8fe7.json', scope)
+creds = ServiceAccountCredentials.from_json_keyfile_name('./KEY/gspread-for-python.json', scope)
 
 # クライアントの作成
 client = gspread.authorize(creds)
