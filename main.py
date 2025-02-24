@@ -3,11 +3,29 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
 import cv2
-from pyzbar.pyzbar import decode
+# from pyzbar.pyzbar import decode
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
+# 認証情報の設定
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name('./KEY/gspread-for-python-420303-e7ddbb5d8fe7.json', scope)
+
+# クライアントの作成
+client = gspread.authorize(creds)
+
+# スプレッドシートの取得
+spreadsheet = client.open_by_key('1yVVzEtgICXiWCFEsp8kTUSgj8LqgzH5ki64f345NuqE')
+
+# シートの取得
+sheet = spreadsheet.worksheet('受付データ')
+
+# 全データの取得
+data = sheet.get_all_records()
+print(data)
 
 # ✅ フォントのパスを修正（IPAex明朝を使用）
-FONT_PATH = "/Users/chino/Library/Fonts/ipaexm.ttf"
+FONT_PATH = "./FONTS/ipaexm.ttf"
 
 # ✅ フォント登録（IPAex明朝）
 pdfmetrics.registerFont(TTFont("IPAexMincho", FONT_PATH))
@@ -60,10 +78,14 @@ def scan_qr():
         if not ret:
             continue
         
-        decoded_objects = decode(frame)
-        for obj in decoded_objects:
+        detecter = cv2.QRCodeDetector()
+        data, bbox, _ = detecter.detectAndDecode(frame)
+        # decoded_objects = decode(frame)
+        # for obj in decoded_objects:
+        if data:
             try:
-                qr_text = obj.data.decode("utf-8")  # ✅ UTF-8でデコード
+                # qr_text = obj.data.decode("utf-8")  # ✅ UTF-8でデコード
+                qr_text = data
                 print(f"📥 読み取ったQRコードの内容: {qr_text}")
                 cap.release()
                 cv2.destroyAllWindows()
