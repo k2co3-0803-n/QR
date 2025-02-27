@@ -3,7 +3,6 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
 import cv2
-# from pyzbar.pyzbar import decode
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -15,7 +14,7 @@ SPREADSHEET = CLIENT.open_by_key('1yVVzEtgICXiWCFEsp8kTUSgj8LqgzH5ki64f345NuqE')
 SHEET = SPREADSHEET.worksheet('受付データ')
 
 # ✅ フォントのパスを修正（IPAex明朝を使用）
-FONT_PATH = "./FONTS/ipaexm.ttf"
+FONT_PATH = "./FONT/ipaexm.ttf"
 
 # ✅ フォント登録（IPAex明朝）
 pdfmetrics.registerFont(TTFont("IPAexMincho", FONT_PATH))
@@ -100,10 +99,10 @@ def scan_qr():
 
 
 def play_success_sound():
-    os.system("afplay /System/Library/Sounds/Ping.aiff")
+    os.system("afplay ./SOUND/Ping.aiff")
 
 def play_error_sound():
-    os.system("afplay /System/Library/Sounds/Basso.aiff")
+    os.system("afplay ./SOUND/Basso.aiff")
 
 def main():
     """QRコードをスキャンし、PDFを生成するメイン関数"""
