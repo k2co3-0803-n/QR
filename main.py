@@ -7,22 +7,12 @@ import cv2
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# 認証情報の設定
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name('./KEY/gspread-for-python.json', scope)
-
-# クライアントの作成
-client = gspread.authorize(creds)
-
-# スプレッドシートの取得
-spreadsheet = client.open_by_key('1yVVzEtgICXiWCFEsp8kTUSgj8LqgzH5ki64f345NuqE')
-
-# シートの取得
-sheet = spreadsheet.worksheet('受付データ')
-
-# 全データの取得
-data = sheet.get_all_records()
-print(data)
+# ✅ Googleスプレッドシート認証設定
+SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+CREDS = ServiceAccountCredentials.from_json_keyfile_name('./KEY/gspread-for-python.json', SCOPE)
+CLIENT = gspread.authorize(CREDS)
+SPREADSHEET = CLIENT.open_by_key('1yVVzEtgICXiWCFEsp8kTUSgj8LqgzH5ki64f345NuqE')
+SHEET = SPREADSHEET.worksheet('受付データ')
 
 # ✅ フォントのパスを修正（IPAex明朝を使用）
 FONT_PATH = "./FONTS/ipaexm.ttf"
@@ -46,7 +36,7 @@ def get_next_filename():
     return f"business_card_{next_number:03}.pdf"
 
 
-def generatePDF(affiliation, grade, name):
+def generatePDF(affiliation, year, name):
     """QRコードの情報から名刺PDFを作成"""
     filename = get_next_filename()
     output_path = os.path.join(OUTPUT_DIR, filename)
@@ -61,7 +51,7 @@ def generatePDF(affiliation, grade, name):
 
     c.setFont("IPAexMincho", 12)
     text_y -= 25
-    c.drawCentredString(129, text_y, grade)  # 学年
+    c.drawCentredString(129, text_y, year)  # 学年
 
     c.setFont("IPAexMincho", 16)  # 名前を目立たせる
     text_y -= 30
@@ -72,29 +62,36 @@ def generatePDF(affiliation, grade, name):
 
 
 def scan_qr():
+    """QRコードをスキャンし、データを返す関数"""
     cap = cv2.VideoCapture(0)  # カメラを起動
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            continue
-        
-        detecter = cv2.QRCodeDetector()
-        data, bbox, _ = detecter.detectAndDecode(frame)
-        # decoded_objects = decode(frame)
-        # for obj in decoded_objects:
-        if data:
-            try:
-                # qr_text = obj.data.decode("utf-8")  # ✅ UTF-8でデコード
-                qr_text = data
-                print(f"📥 読み取ったQRコードの内容: {qr_text}")
-                cap.release()
-                cv2.destroyAllWindows()
-                return qr_text
-            except UnicodeDecodeError:
-                print("❌ デコードに失敗しました！エンコード方式を確認してください。")
 
-        cv2.imshow("QR Code Scanner", frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):  # "q"キーで終了
+    if not cap.isOpened():
+        print("❌ エラー: カメラを開けません。")
+        return None
+
+    detecter = cv2.QRCodeDetector()
+
+    while True:
+        ret, frame = cap.read()  # フレームを取得
+
+        # フレーム取得に失敗した場合は次のループへ
+        if not ret or frame is None:
+            continue  # ループの先頭に戻る
+
+        # QRコードの検出とデコード
+        data, bbox, _ = detecter.detectAndDecode(frame)
+
+        # QRコードが検出された場合、データを返す
+        if data:
+            print("✅ QRコードを検出しました:", data)
+            cap.release()
+            return data
+
+        # カメラ映像を表示（デバッグ用）
+        cv2.imshow("QR Scanner", frame)
+
+        # `q` を押したらスキャンを終了
+        if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
     cap.release()
@@ -110,7 +107,7 @@ def play_error_sound():
 
 def main():
     """QRコードをスキャンし、PDFを生成するメイン関数"""
-    read = scan_qr()
+    read = scan_qr().strip()  # 空白や改行を除去
 
     # ✅ すでに読み取ったQRコードの場合はスキップ
     if read in scanned_qr_codes:
@@ -118,16 +115,36 @@ def main():
         play_error_sound()
         return
 
-    reads = read.split("/")
-    if len(reads) < 3:
-        print("❌ PDFの生成を中止しました（入力データが不完全）。")
+    # `?` を削除し、パラメータを分割
+    params = read.lstrip('?').split('&')
+    # params = read.split('&')
+
+    # パラメータを辞書に変換
+    param_dict = {}
+    for param in params:
+        if '=' in param:
+            key, value = param.split('=', 1)  # '=' で分割（最大1回）
+            param_dict[key] = value.strip()
+
+    # 必要なキーがすべて存在するかチェック
+    required_keys = {"form_id", "affiliation", "year", "name"}
+    if not required_keys.issubset(param_dict.keys()):
+        print("❌ PDFの生成を中止しました（入力データが不完全または無効です）。")
         play_error_sound()
         return
-    
-    affiliation, grade, name = reads[0].strip(), reads[1].strip(), reads[2].strip()
+
+    # 各値を取得
+    form_id = param_dict["form_id"]
+    affiliation = param_dict["affiliation"]
+    year = param_dict["year"]
+    name = param_dict["name"]
+
+    # ✅ スプレッドシートの最下行にデータを追加
+    SHEET.append_row([form_id, affiliation, year, name])
+    print(f"✅ スプレッドシートに追加: {form_id}, {affiliation}, {year}, {name}")
 
     # ✅ PDF を生成
-    generatePDF(affiliation, grade, name)
+    generatePDF(affiliation, year, name)
 
     # ✅ 読み取ったQRコードを記録
     scanned_qr_codes.add(read)
