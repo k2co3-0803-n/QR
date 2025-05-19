@@ -15,7 +15,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 CREDS = ServiceAccountCredentials.from_json_keyfile_name('./KEY/gspread-for-python.json', SCOPE)
 CLIENT = gspread.authorize(CREDS)
-SPREADSHEET = CLIENT.open_by_key('HERE: PASTE SHEET_ID')
+SPREADSHEET = CLIENT.open_by_key('10ID8EwHwJNJvVqzNfbbbZvfwUFNwMtg9Mv-zDNkB3Mg')
 SHEET = SPREADSHEET.worksheet('受付中')
 
 # ✅ フォントのパス（Windows用。相対パスでOK）
@@ -23,6 +23,12 @@ FONT_PATH = os.path.join("FONT", "ipaexm.ttf")
 
 # ✅ フォント登録（IPAex明朝）
 pdfmetrics.registerFont(TTFont("IPAexMincho", FONT_PATH))
+
+# ✅ 名刺サイズ＆フォントサイズの初期値を設定
+CARD_WIDTH = 258
+CARD_HEIGHT = 156
+MARGIN = 10
+LINE_SPACING = 6
 
 # ✅ 出力ディレクトリを作成（存在しない場合）
 OUTPUT_DIR = "OUTPUT"
@@ -39,52 +45,51 @@ def get_next_filename():
     return f"business_card_{next_number:03}.pdf"
 
 
-# def generatePDF(affiliation, grade, name):
-#     filename = get_next_filename()
-#     output_path = os.path.join(OUTPUT_DIR, filename)
-
-#     c = canvas.Canvas(output_path, pagesize=(258, 156))
-#     c.setFont("IPAexMincho", 14)
-#     text_y = 120
-#     c.drawCentredString(129, text_y, affiliation)
-
-#     c.setFont("IPAexMincho", 12)
-#     text_y -= 25
-#     c.drawCentredString(129, text_y, grade)
-
-#     c.setFont("IPAexMincho", 16)
-#     text_y -= 30
-#     c.drawCentredString(129, text_y, name)
-
-#     c.save()
-#     print(f"✅ PDF を保存しました: {output_path}")
-#     return output_path
+def fit_font_size(text, font_name, max_width, max_font_size):
+    for size in range(max_font_size, 1, -1):
+        width = pdfmetrics.stringWidth(text, font_name, size)
+        if width <= max_width:
+            return size
+    return 1
 
 
 def generatePDF(affiliation, grade, name):
     filename = get_next_filename()
     output_path = os.path.join(OUTPUT_DIR, filename)
+    c = canvas.Canvas(output_path, pagesize=(CARD_WIDTH, CARD_HEIGHT))
 
-    c = canvas.Canvas(output_path, pagesize=(258, 156))
-    
-    # フォントサイズを全体的に2回り（+6pt程度）大きくする
-    c.setFont("IPAexMincho", 20)
-    text_y = 120
-    c.drawCentredString(129, text_y, affiliation)
+    lines = [affiliation, grade, name]
+    max_font_size = 40
+    usable_width = CARD_WIDTH - 2 * MARGIN
 
-    c.setFont("IPAexMincho", 18)
-    text_y -= 30
-    c.drawCentredString(129, text_y, grade)
+    # 各行の最大フォントサイズを調整
+    font_sizes = [fit_font_size(line, "IPAexMincho", usable_width, max_font_size) for line in lines]
 
-    c.setFont("IPAexMincho", 24)
-    text_y -= 35
-    c.drawCentredString(129, text_y, name)
+    # 各行の高さ（Ascentで上部まで含める）
+    total_height = 0
+    line_metrics = []
+    for i, (text, size) in enumerate(zip(lines, font_sizes)):
+        ascent = pdfmetrics.getAscent("IPAexMincho") * size / 1000
+        descent = pdfmetrics.getDescent("IPAexMincho") * size / 1000
+        line_height = ascent - descent
+        line_metrics.append((text, size, line_height, ascent))
+        total_height += line_height
+        if i < len(lines) - 1:
+            total_height += LINE_SPACING
+
+    # スタートY座標（中央揃え）
+    y = (CARD_HEIGHT + total_height) / 2
+
+    for text, font_size, line_height, ascent in line_metrics:
+        c.setFont("IPAexMincho", font_size)
+        c.drawCentredString(CARD_WIDTH / 2, y - ascent, text)  # ベースライン補正
+        y -= line_height + LINE_SPACING
 
     c.save()
-    print(f"✅ PDF を保存しました: {output_path}")
     return output_path
 
 
+# パソコン内カメラ用のscan_qr()関数（削除しないで）
 # def scan_qr():
 #     cap = cv2.VideoCapture(0)
 
@@ -99,10 +104,16 @@ def generatePDF(affiliation, grade, name):
 #         if not ret or frame is None:
 #             continue
 
-#         data, bbox, _ = detecter.detectAndDecode(frame)
+#         try:
+#             # QRコードの検出とデコード
+#             data, bbox, _ = detecter.detectAndDecode(frame)
+#         except cv2.error as e:
+#             print(f"⚠️ QRコード解析エラー: {e}")
+#             continue  # エラーが出てもスキップして次のフレームへ
 
 #         if data:
 #             print("✅ QRコードを検出しました:", data)
+#             # print("✅ QRコードを検出しました")
 #             cap.release()
 #             cv2.destroyAllWindows()
 #             return data
@@ -116,40 +127,27 @@ def generatePDF(affiliation, grade, name):
 #     return None
 
 
+def clean_scanned_data(raw):
+    cleaned = raw.strip().replace('\n', '').replace('\r', '')
+    if cleaned.endswith('^^'):
+        cleaned = cleaned[:-2]
+    cleaned += '=' * (-len(cleaned) % 4)
+    return cleaned
+
+
 def scan_qr():
-    cap = cv2.VideoCapture(0)
-
-    if not cap.isOpened():
-        print("❌ エラー: カメラを開けません。")
-        return None
-
-    detecter = cv2.QRCodeDetector()
-
+    print("🔍 QRコードをスキャンしてください（カーソルをここに合わせるのを忘れないで下さい。）:")
     while True:
-        ret, frame = cap.read()
-        if not ret or frame is None:
-            continue
-
         try:
-            # QRコードの検出とデコード
-            data, bbox, _ = detecter.detectAndDecode(frame)
-        except cv2.error as e:
-            print(f"⚠️ QRコード解析エラー: {e}")
-            continue  # エラーが出てもスキップして次のフレームへ
-
-        if data:
-            print("✅ QRコードを検出しました:", data)
-            cap.release()
-            cv2.destroyAllWindows()
-            return data
-
-        cv2.imshow("QR Scanner", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
-    return None
+            raw = input()
+            qr_data = clean_scanned_data(raw)
+            if qr_data:
+                return qr_data
+            else:
+                print("⚠️ 空の入力が検出されました。再スキャンしてください。")
+        except KeyboardInterrupt:
+            print("\n❌ 入力キャンセル")
+            return None
 
 
 def play_success_sound():
@@ -196,9 +194,9 @@ def parse_qr_query_from_url(input_str):
             padded_data = encoded_data + '=' * (-len(encoded_data) % 4)
             decoded_bytes = base64.urlsafe_b64decode(padded_data)
             decoded_str = decoded_bytes.decode('utf-8')
-            print(f"デコードデータ> {decoded_str}")
+            print(f"✅ デコードデータ> {decoded_str}")
         except Exception as err:
-            print(f'Base64 デコード失敗: {err}, {encoded_data}')
+            print(f'\n❌ Base64 デコード失敗: {err}, {encoded_data}')
             return []
 
         if decoded_str.startswith('?'):
@@ -235,7 +233,7 @@ def main():
         return
 
     decoded_values = parse_qr_query_from_url(read)
-    print("デコード結果:", decoded_values)
+    print(f"✅ 受付完了: {decoded_values}")
 
     # if len(decoded_values) != 4 or any(v is None or v.strip() == '' for v in decoded_values):
     if len(decoded_values) != 4:
@@ -250,8 +248,8 @@ def main():
     output_path = generatePDF(affiliation, grade, name)
     print_pdf(output_path)
     scanned_qr_codes.add(read)
-    SHEET.append_row([form_id])
-    print(f"✅ スプレッドシートに追加: {form_id}")
+    SHEET.append_row([form_id, affiliation, grade, name])
+    # print(f"✅ スプレッドシートに追加: {form_id}")
 
 
 # def main():
