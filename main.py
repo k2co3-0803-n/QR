@@ -62,7 +62,10 @@ def generatePDF(affiliation, grade, name):
     output_path = os.path.join(OUTPUT_DIR, filename)
     c = canvas.Canvas(output_path, pagesize=(CARD_WIDTH, CARD_HEIGHT))
 
+    # グループ分けが必要な場合、グループ番号を付与
+    # グループ番号が不必要な場合、コメントアウト
     name = f"{group_mark} {name}"
+
     lines = [affiliation, grade, name]
     max_font_size = 40
     usable_width = CARD_WIDTH - 2 * MARGIN
@@ -141,12 +144,21 @@ def clean_scanned_data(raw):
 
 
 def scan_qr():
-    print("🔍 QRコードをスキャンしてください（カーソルをここに合わせるのを忘れないで下さい。）:")
+    print("🔍 QRコードをスキャンしてください。カーソルをここに合わせるのを忘れないで下さい。\n🔍 QRコードを持っていない場合は、ここに（ターミナルに）直で\"mannual\"と入力して、手打ち対応をしてください。:")
     while True:
         try:
-            raw = input()
-            qr_data = clean_scanned_data(raw)
-            if qr_data:
+            raw = input().strip()
+            if raw == "mannual":
+                print("✅️ 手動入力モードが選択されました。以下の情報を入力してください。")
+                print(f"① 所属を入力してください: ")
+                affiliation = input().strip()
+                print(f"② 学年を入力してください: ")
+                grade = input().strip()
+                print(f"③ 名前を入力してください: ")
+                name = input().strip()
+                return f"mannual&form_id=null&affiliation={affiliation}&grade={grade}&name={name}"
+            elif raw:
+                qr_data = clean_scanned_data(raw)
                 return qr_data
             else:
                 print("⚠️ 空の入力が検出されました。再スキャンしてください。")
@@ -179,7 +191,15 @@ def parse_qr_query_from_url(input_str):
     try:
         encoded_data = None
 
-        if isinstance(input_str, str) and ('://' in input_str):
+        if input_str.startswith('mannual'):
+            obj = {}
+            for pair in input_str.split('&')[1:]:
+                if '=' in pair:
+                    key, val = pair.split('=', 1)
+                    obj[key] = val
+            return [obj.get('form_id'), obj.get('affiliation'), obj.get('grade'), obj.get('name'), '手打ち対応']
+
+        elif isinstance(input_str, str) and ('://' in input_str):
             query_index = input_str.find('?')
             query_string = input_str[query_index + 1:] if query_index >= 0 else input_str
             params = query_string.split('&')
@@ -240,59 +260,32 @@ def main():
     decoded_values = parse_qr_query_from_url(read)
     print(f"✅ 受付完了: {decoded_values}")
 
-    # if len(decoded_values) != 4 or any(v is None or v.strip() == '' for v in decoded_values):
-    if len(decoded_values) != 4:
+    if '手打ち対応' in decoded_values:
+        if len(decoded_values) != 5:
+            print("❌ PDFの生成を中止しました（手動入力内容が不完全または無効です）。")
+            play_error_sound()
+            return
+        form_id, affiliation, grade, name, mannual = decoded_values
+        play_success_sound()
+        output_path, group_number = generatePDF(affiliation, grade, name)
+        print_pdf(output_path)
+        SHEET.append_row([form_id, affiliation, grade, name, group_number, mannual])
+
+    elif len(decoded_values) != 4:
         print("❌ PDFの生成を中止しました（QRコード内容が不完全または無効です）。")
         play_error_sound()
         return
 
-    form_id, affiliation, grade, name = decoded_values
-    name = name.replace('\u3000', ' ')  # ← ここで全角スペースを半角に置換
+    else:
+        form_id, affiliation, grade, name = decoded_values
+        name = name.replace('\u3000', ' ')  # ← ここで全角スペースを半角に置換
 
-    play_success_sound()
-    output_path, group_number = generatePDF(affiliation, grade, name)
-    # print_pdf(output_path)
-    scanned_qr_codes.add(read)
-    SHEET.append_row([form_id, affiliation, grade, name, group_number])
-    # print(f"✅ スプレッドシートに追加: {form_id}")
+        play_success_sound()
+        output_path, group_number = generatePDF(affiliation, grade, name)
+        print_pdf(output_path)
+        scanned_qr_codes.add(read)
+        SHEET.append_row([form_id, affiliation, grade, name, group_number])
 
-
-# def main():
-#     read = scan_qr()
-#     if not read:
-#         return
-#     read = read.strip()
-
-#     if read in scanned_qr_codes:
-#         print("⚠️ このQRコードはすでに処理済みです。スキャンをスキップします。")
-#         play_error_sound()
-#         return
-
-#     params = read.lstrip('?').split('&')
-#     param_dict = {}
-#     for param in params:
-#         if '=' in param:
-#             key, value = param.split('=', 1)
-#             param_dict[key] = value.strip()
-
-#     required_keys = {"form_id", "affiliation", "grade", "name"}
-#     if not required_keys.issubset(param_dict.keys()):
-#         print("❌ PDFの生成を中止しました（入力データが不完全または無効です）。")
-#         play_error_sound()
-#         return
-
-#     form_id = param_dict["form_id"]
-#     affiliation = param_dict["affiliation"]
-#     grade = param_dict["grade"]
-#     name = param_dict["name"]
-
-#     SHEET.append_row([form_id, affiliation, grade, name])
-#     print(f"✅ スプレッドシートに追加: {form_id}, {affiliation}, {grade}, {name}")
-
-#     output_path = generatePDF(affiliation, grade, name)
-#     scanned_qr_codes.add(read)
-#     print_pdf(output_path)
-#     play_success_sound()
 
 if __name__ == "__main__":
     while True:
