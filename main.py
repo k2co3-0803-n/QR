@@ -240,20 +240,59 @@ def main():
     decoded_values = parse_qr_query_from_url(read)
     print(f"✅ 受付完了: {decoded_values}")
 
+    # if len(decoded_values) != 4 or any(v is None or v.strip() == '' for v in decoded_values):
     if len(decoded_values) != 4:
         print("❌ PDFの生成を中止しました（QRコード内容が不完全または無効です）。")
         play_error_sound()
         return
 
     form_id, affiliation, grade, name = decoded_values
-    name = name.replace('\u3000', ' ')
+    name = name.replace('\u3000', ' ')  # ← ここで全角スペースを半角に置換
 
     play_success_sound()
     output_path, group_number = generatePDF(affiliation, grade, name)
-    print_pdf(output_path)
+    # print_pdf(output_path)
     scanned_qr_codes.add(read)
     SHEET.append_row([form_id, affiliation, grade, name, group_number])
-    print(f"✅ スプレッドシートに追加")
+    # print(f"✅ スプレッドシートに追加: {form_id}")
+
+
+# def main():
+#     read = scan_qr()
+#     if not read:
+#         return
+#     read = read.strip()
+
+#     if read in scanned_qr_codes:
+#         print("⚠️ このQRコードはすでに処理済みです。スキャンをスキップします。")
+#         play_error_sound()
+#         return
+
+#     params = read.lstrip('?').split('&')
+#     param_dict = {}
+#     for param in params:
+#         if '=' in param:
+#             key, value = param.split('=', 1)
+#             param_dict[key] = value.strip()
+
+#     required_keys = {"form_id", "affiliation", "grade", "name"}
+#     if not required_keys.issubset(param_dict.keys()):
+#         print("❌ PDFの生成を中止しました（入力データが不完全または無効です）。")
+#         play_error_sound()
+#         return
+
+#     form_id = param_dict["form_id"]
+#     affiliation = param_dict["affiliation"]
+#     grade = param_dict["grade"]
+#     name = param_dict["name"]
+
+#     SHEET.append_row([form_id, affiliation, grade, name])
+#     print(f"✅ スプレッドシートに追加: {form_id}, {affiliation}, {grade}, {name}")
+
+#     output_path = generatePDF(affiliation, grade, name)
+#     scanned_qr_codes.add(read)
+#     print_pdf(output_path)
+#     play_success_sound()
 
 if __name__ == "__main__":
     while True:
