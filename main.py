@@ -64,7 +64,7 @@ def generatePDF(affiliation, grade, name):
 
     # グループ分けが必要な場合、グループ番号を付与
     # グループ番号が不必要な場合、コメントアウト
-    name = f"{group_mark} {name}"
+    # name = f"{group_mark} {name}"
 
     lines = [affiliation, grade, name]
     max_font_size = 40
@@ -144,17 +144,21 @@ def clean_scanned_data(raw):
 
 
 def scan_qr():
-    print("🔍 QRコードをスキャンしてください。カーソルをここに合わせるのを忘れないで下さい。\n🔍 QRコードを持っていない場合は、ここに（ターミナルに）直で\"mannual\"と入力して、手打ち対応をしてください。:")
+    print("🔍 QRコードをスキャンしてください。カーソルをここに合わせるのを忘れないで下さい。\n🔍 QRコードを持っていない場合は、ここに（ターミナルに）直で\"mannual\"と入力して、手打ち対応をしてください。")
+    print(">", end=" ")
     while True:
         try:
             raw = input().strip()
             if raw == "mannual":
                 print("✅️ 手動入力モードが選択されました。以下の情報を入力してください。")
-                print(f"① 所属を入力してください: ")
+                print(f"① 所属を入力してください")
+                print(">", end=" ")
                 affiliation = input().strip()
-                print(f"② 学年を入力してください: ")
+                print(f"② 学年を入力してください")
+                print(">", end=" ")
                 grade = input().strip()
-                print(f"③ 名前を入力してください: ")
+                print(f"③ 名前を入力してください")
+                print(">", end=" ")
                 name = input().strip()
                 return f"mannual&form_id=null&affiliation={affiliation}&grade={grade}&name={name}"
             elif raw:
@@ -278,7 +282,7 @@ def main():
 
     else:
         form_id, affiliation, grade, name = decoded_values
-        name = name.replace('\u3000', ' ')  # ← ここで全角スペースを半角に置換
+        name = name.replace('\u3000', ' ')  # ここで全角スペースを半角に置換
 
         play_success_sound()
         output_path, group_number = generatePDF(affiliation, grade, name)
