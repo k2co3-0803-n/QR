@@ -136,10 +136,7 @@ def generatePDF(affiliation, grade, name):
 
 
 def clean_scanned_data(raw):
-    cleaned = raw.strip().replace('\n', '').replace('\r', '')
-    if cleaned.endswith('^^'):
-        cleaned = cleaned[:-2]
-    cleaned += '=' * (-len(cleaned) % 4)
+    cleaned = raw.strip().replace('\n', '').replace('\r', '').replace('^', '=')
     return cleaned
 
 
@@ -215,18 +212,17 @@ def parse_qr_query_from_url(input_str):
                         break
             if not encoded_data:
                 print(f'data パラメータが見つかりません: {input_str}')
-                return []
+                return
         else:
             encoded_data = input_str
 
         try:
-            padded_data = encoded_data + '=' * (-len(encoded_data) % 4)
-            decoded_bytes = base64.urlsafe_b64decode(padded_data)
+            decoded_bytes = base64.urlsafe_b64decode(encoded_data)
             decoded_str = decoded_bytes.decode('utf-8')
             print(f"✅ デコードデータ> {decoded_str}")
         except Exception as err:
             print(f'\n❌ Base64 デコード失敗: {err}, {encoded_data}')
-            return []
+            return
 
         if decoded_str.startswith('?'):
             decoded_str = decoded_str[1:]
@@ -247,7 +243,7 @@ def parse_qr_query_from_url(input_str):
 
     except Exception as e:
         print(f'エラー: {e}')
-        return []
+        return
 
 
 def main():
@@ -262,13 +258,17 @@ def main():
         return
 
     decoded_values = parse_qr_query_from_url(read)
-    print(f"✅ 受付完了: {decoded_values}")
+    if decoded_values == None:
+        return
+    else:
+        print(f"✅ デコード結果: {decoded_values}\n")
 
     if '手打ち対応' in decoded_values:
         if len(decoded_values) != 5:
             print("❌ PDFの生成を中止しました（手動入力内容が不完全または無効です）。")
             play_error_sound()
             return
+
         form_id, affiliation, grade, name, mannual = decoded_values
         play_success_sound()
         output_path, group_number = generatePDF(affiliation, grade, name)
